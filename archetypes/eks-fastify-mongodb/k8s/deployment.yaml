@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-query-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: customer-query-service
+  template:
+    metadata:
+      labels:
+        app: customer-query-service
+    spec:
+      containers:
+        - name: app
+          image: your-registry/customer-query-service:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: PORT
+              value: "3000"
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: customer-query-service-secrets
+                  key: mongodb-uri
+            - name: MONGODB_DATABASE
+              value: "customers"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: customer-query-service
+spec:
+  selector:
+    app: customer-query-service
+  ports:
+    - port: 80
+      targetPort: 3000
