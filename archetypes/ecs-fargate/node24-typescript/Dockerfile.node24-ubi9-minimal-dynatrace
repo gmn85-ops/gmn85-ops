@@ -1,0 +1,19 @@
+FROM <TU_ENVIRONMENT_URL>/linux/oneagent-codemodules:nodejs AS dynatrace
+FROM registry.access.redhat.com/ubi9/nodejs-24-minimal
+LABEL org.opencontainers.image.vendor="La Positiva Seguros" \
+      pe.com.lapositiva.stack="Node24-TypeScript-Fastify" \
+      pe.com.lapositiva.runtime="ECS-Fargate" \
+      pe.com.lapositiva.observability="dynatrace"
+USER 0
+RUN microdnf install -y curl-minimal && microdnf clean all
+COPY --from=dynatrace / /
+ENV LD_PRELOAD=/opt/dynatrace/oneagent/agent/lib64/liboneagentproc.so \
+    NODE_ENV=production PORT=8080 TZ=America/Lima
+USER 1001
+WORKDIR /opt/app-root/src
+COPY --chown=1001:0 dist ./dist
+COPY --chown=1001:0 node_modules ./node_modules
+COPY --chown=1001:0 package.json ./package.json
+EXPOSE 8080
+STOPSIGNAL SIGTERM
+CMD ["node", "dist/server.js"]
