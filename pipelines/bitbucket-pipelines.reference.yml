@@ -1,0 +1,57 @@
+image: atlassian/default-image:4
+
+options:
+  max-time: 30
+
+definitions:
+  caches:
+    terraform: ~/.terraform.d/plugin-cache
+  steps:
+    - step: &quality
+        name: Quality and security checks
+        script:
+          - echo "Run language-specific build, unit tests, static analysis and dependency scan"
+    - step: &terraform_validate
+        name: Terraform validate
+        image: hashicorp/terraform:latest
+        caches: [terraform]
+        script:
+          - terraform fmt -check -recursive
+          - terraform -chdir=terraform validate
+    - step: &terraform_plan
+        name: Terraform plan
+        oidc: true
+        image: hashicorp/terraform:latest
+        script:
+          - export AWS_WEB_IDENTITY_TOKEN_FILE=$(pwd)/web-identity-token
+          - echo "$BITBUCKET_STEP_OIDC_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
+          - export AWS_ROLE_ARN="$AWS_DEPLOY_ROLE_ARN"
+          - terraform -chdir=terraform init
+          - terraform -chdir=terraform plan -out=tfplan
+        artifacts:
+          - terraform/tfplan
+    - step: &terraform_apply
+        name: Terraform apply
+        oidc: true
+        trigger: manual
+        image: hashicorp/terraform:latest
+        script:
+          - export AWS_WEB_IDENTITY_TOKEN_FILE=$(pwd)/web-identity-token
+          - echo "$BITBUCKET_STEP_OIDC_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
+          - export AWS_ROLE_ARN="$AWS_DEPLOY_ROLE_ARN"
+          - terraform -chdir=terraform init
+          - terraform -chdir=terraform apply -auto-approve tfplan
+
+pipelines:
+  pull-requests:
+    '**':
+      - step: *quality
+      - step: *terraform_validate
+  branches:
+    main:
+      - step: *quality
+      - step: *terraform_validate
+      - step: *terraform_plan
+      - step:
+          <<: *terraform_apply
+          deployment: production
